@@ -30,7 +30,7 @@ profibus_serial_open(const char *device, unsigned int rate, GError **err)
   }
   settings.c_iflag &= ~(IGNBRK | BRKINT | IGNPAR | INPCK | ISTRIP
 			| INLCR | IGNCR | ICRNL | IXON | PARMRK);
-  settings.c_iflag |= PARMRK;
+  settings.c_iflag |= IGNBRK | IGNPAR;
   settings.c_oflag &= ~OPOST;
   settings.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
   settings.c_cflag &= ~(CSIZE | PARODD | CBAUD);
