@@ -193,6 +193,54 @@ decode_function_code(FILE *out, guint8 fc)
   }
 }
 
+static gchar *diag_flags[3][8] =
+  {
+    {"Station_Non_Existent",
+     "Station_Not_Ready",
+     "Cfg_Fault",
+     "Ext_Diag",
+     "Not_Supported",
+     "Invalid_Slave_Response",
+     "Prm_Fault",
+     "Master_lock"},
+    {"Prm_Req",
+     "Stat_Diag",
+     NULL,
+     "WD_On",
+     "Freeze_Mode",
+     "Sync_Mode",
+     NULL,
+     "Deactivated"},
+    {NULL,
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     NULL,
+     "Ext_Diag_Overflow"}
+  };
+
+static void
+decode_diagnostics(FILE *out, guint8 *bytes, gsize len)
+{
+  guint byte;
+  guint bit;
+  if (len < 6) return;
+  for(byte = 0; byte < 3; byte++) {
+    for(bit = 0; bit < 8; bit++) {
+      if (bytes[byte] & (1<<bit)) {
+	if (diag_flags[byte][bit] != NULL) {
+	  fputs(diag_flags[byte][bit], out);
+	  fputs(", ", out);
+	}
+      }
+    }
+  }
+  fprintf(out, "Master_Addr=%d, ", bytes[3]);
+  fprintf(out, "Ident=0x%04x", (bytes[4]<<8) | bytes[5]);
+}
+
 static void
 decode_header(FILE *out, guint8 *bytes, guint8 len)
 {
@@ -212,7 +260,14 @@ decode_header(FILE *out, guint8 *bytes, guint8 len)
     decode_function_code(out, bytes[2]);
   }
   fputc('\n', out);
+  if (((bytes[2] & 0x70) == 0x00) && len > 4
+      && (bytes[1] & 0x80) && bytes[4] == 60) {
+    fputs("Diagnostics: ",out);
+    decode_diagnostics(out, bytes + 5, len - 5);
+    fputc('\n', out);
+  }
 }
+
 
 #define PB_PARSER_ERROR (pb_parser_error_quark())
 
