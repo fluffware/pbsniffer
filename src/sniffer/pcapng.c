@@ -155,7 +155,7 @@ pcapng_write_enhanced_packet(GOutputStream *out,
   chain[1].next = &chain[2];
 
   chain[2].len = PADLEN(packet_len,4);
-  chain[2].data.bytes = pad;
+  chain[2].data.bytes = chain[2].len > 0 ? pad : NULL;
   chain[2].next = (ByteChain*)default_options(options);
 
   return pcapng_write_block(out, 0x00000006, chain, err);
