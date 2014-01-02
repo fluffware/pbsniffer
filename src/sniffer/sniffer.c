@@ -8,6 +8,7 @@
 #include <gio/gunixinputstream.h>
 #include <pcapng.h>
 #include <pcap.h>
+#include <write_libpcap.h>
 
 #define MAX_PACKET_LEN 256
 
@@ -25,7 +26,9 @@ struct AppContext
   guint speed;
   gboolean decode;
   gboolean dump_packet;
+  gboolean use_libpcap;
   gchar *capture_file;
+  gchar *capture_pipe;
   GOutputStream *capture_output;
 };
 
@@ -44,6 +47,7 @@ app_init(AppContext *app)
   app->dump_packet = FALSE;
   app->capture_file = NULL;
   app->capture_output = NULL;
+  app->use_libpcap = FALSE;
 }
 
 static void
@@ -337,8 +341,13 @@ write_packet(AppContext *app, GError **err)
   gsize len = app->packet_len;
   guint8 *data = app->packet_buffer;
   g_get_current_time (&tv);
-  ts = (guint64)tv.tv_sec * G_USEC_PER_SEC + (guint64)tv.tv_usec;
-  return pcapng_write_enhanced_packet(app->capture_output, 0, ts, len, len, data, NULL, err);
+  if (app->use_libpcap) {
+    return libpcap_write_packet(app->capture_output, tv.tv_sec, tv.tv_usec,
+				len, len, data, err);
+  } else {
+    ts = (guint64)tv.tv_sec * G_USEC_PER_SEC + (guint64)tv.tv_usec;
+    return pcapng_write_enhanced_packet(app->capture_output, 0, ts, len, len, data, NULL, err);
+  }
 }
 
 
@@ -536,6 +545,8 @@ const GOptionEntry app_options[] = {
    &app.dump_packet, "Dump raw packets", NULL},
   {"capture-file", 0, 0, G_OPTION_ARG_FILENAME, &app.capture_file, 
    "Capture to PCAPNG file", "FILE"},
+  {"capture-pipe", 0, 0, G_OPTION_ARG_FILENAME, &app.capture_pipe, 
+   "Capture to a named pipe in libpcap format", "PIPE"},
   {NULL}
 };
 
@@ -566,32 +577,49 @@ main(int argc, char *argv[])
   }
   app.capture_stream = g_unix_input_stream_new(ser_fd, TRUE);
 
-  if (app.capture_file) {
+  if (app.capture_file || app.capture_pipe) {
     ByteChain *options = NULL;
-    GFile *file = g_file_new_for_path (app.capture_file);
-    app.capture_output =
-      G_OUTPUT_STREAM(g_file_create(file, G_FILE_CREATE_NONE, NULL, &err));
-    g_object_unref(file);
+    if (app.capture_file) {
+      GFile *file = g_file_new_for_path (app.capture_file);
+      app.capture_output =
+	G_OUTPUT_STREAM(g_file_create(file, G_FILE_CREATE_NONE, NULL, &err));
+      g_object_unref(file);
+    } else {
+      GFile *file = g_file_new_for_path (app.capture_pipe);
+      app.capture_output =
+	G_OUTPUT_STREAM(g_file_append_to(file, G_FILE_CREATE_NONE, NULL, &err));
+      app.use_libpcap = TRUE;
+      g_object_unref(file);
+    }
     if (!app.capture_output) {
       g_printerr("Failed open capture output file: %s\n", err->message);
       app_cleanup(&app);
       return EXIT_FAILURE;
     }
-    pcapng_add_string_option(&options, PCAPNG_OPTION_SHB_USERAPPL, "pcapngtst"); 
-    if (!pcapng_write_section_header(app.capture_output, -1, options, &err)) {
-      g_printerr("Failed to write section header: %s\n", err->message);
-      app_cleanup(&app);
+    if (app.use_libpcap) {
+      if (!libpcap_write_global_header(app.capture_output,
+				       0, 256, DLT_USER0, &err)) {
+	g_printerr("Failed to write global header: %s\n", err->message);
+	app_cleanup(&app);
+	return EXIT_FAILURE;
+      }
+    } else {
+      pcapng_add_string_option(&options, PCAPNG_OPTION_SHB_USERAPPL, "pcapngtst"); 
+      if (!pcapng_write_section_header(app.capture_output, -1, options, &err)) {
+	g_printerr("Failed to write section header: %s\n", err->message);
+	app_cleanup(&app);
       return EXIT_FAILURE;
+      }
+      pcapng_clear_options(&options);
+      pcapng_add_string_option(&options, PCAPNG_OPTION_IF_NAME, app.device); 
+      if (!pcapng_write_interface_description(app.capture_output, DLT_USER0,
+					      256, options, &err)) {
+	g_printerr("Failed to write interface description: %s\n", err->message);
+	app_cleanup(&app);
+	return EXIT_FAILURE;
+      }
+      pcapng_clear_options(&options);
     }
-    pcapng_clear_options(&options);
-    pcapng_add_string_option(&options, PCAPNG_OPTION_IF_NAME, app.device); 
-    if (!pcapng_write_interface_description(app.capture_output, DLT_USER0,
-					    256, options, &err)) {
-      g_printerr("Failed to write interface description: %s\n", err->message);
-      app_cleanup(&app);
-      return EXIT_FAILURE;
-    }
-    pcapng_clear_options(&options);
     
   }
 

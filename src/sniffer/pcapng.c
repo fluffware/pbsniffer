@@ -150,7 +150,7 @@ pcapng_write_enhanced_packet(GOutputStream *out,
   chain[0].data.bytes = header;
   chain[0].next = &chain[1];
   
-  chain[1].len = packet_len;
+  chain[1].len = captured_len;
   chain[1].data.bytes = packet_data;
   chain[1].next = &chain[2];
 

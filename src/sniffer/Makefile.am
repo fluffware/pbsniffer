@@ -4,7 +4,8 @@ bin_PROGRAMS = pbsniffer hex2pcapng pcapngtst
 
 pbsniffer_SOURCES = sniffer.c \
 serial.c serial.h \
-pcapng.c pcapng.h
+pcapng.c pcapng.h \
+write_libpcap.c write_libpcap.h
 
 pbsniffer_LDADD= @GLIB_LIBS@ 
 
