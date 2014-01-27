@@ -336,17 +336,21 @@ static gboolean
 write_packet(AppContext *app, GError **err)
 
 {
-  guint64 ts;
-  GTimeVal tv;
-  gsize len = app->packet_len;
-  guint8 *data = app->packet_buffer;
-  g_get_current_time (&tv);
-  if (app->use_libpcap) {
-    return libpcap_write_packet(app->capture_output, tv.tv_sec, tv.tv_usec,
-				len, len, data, err);
+  if (app->capture_output) {
+    guint64 ts;
+    GTimeVal tv;
+    gsize len = app->packet_len;
+    guint8 *data = app->packet_buffer;
+    g_get_current_time (&tv);
+    if (app->use_libpcap) {
+      return libpcap_write_packet(app->capture_output, tv.tv_sec, tv.tv_usec,
+				  len, len, data, err);
+    } else {
+      ts = (guint64)tv.tv_sec * G_USEC_PER_SEC + (guint64)tv.tv_usec;
+      return pcapng_write_enhanced_packet(app->capture_output, 0, ts, len, len, data, NULL, err);
+    }
   } else {
-    ts = (guint64)tv.tv_sec * G_USEC_PER_SEC + (guint64)tv.tv_usec;
-    return pcapng_write_enhanced_packet(app->capture_output, 0, ts, len, len, data, NULL, err);
+    return TRUE;
   }
 }
 
