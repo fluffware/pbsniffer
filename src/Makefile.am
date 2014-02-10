@@ -1,1 +1,1 @@
-SUBDIRS=sniffer
+SUBDIRS=sniffer writer

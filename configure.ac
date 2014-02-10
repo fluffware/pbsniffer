@@ -7,5 +7,5 @@ AC_PROG_CXX
 AC_SYS_LARGEFILE
 AM_PATH_GLIB_2_0(2.30.0,,, [gobject gio gio-unix])
 
-AC_CONFIG_FILES([Makefile src/Makefile src/sniffer/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/sniffer/Makefile src/writer/Makefile])
 AC_OUTPUT
