@@ -307,6 +307,7 @@ sigint_handler(gpointer user_data)
 }
 
 AppContext app;
+gint max_queue_len = 10000;
 
 const GOptionEntry app_options[] = {
   {"device", 'd', 0, G_OPTION_ARG_STRING,
@@ -318,6 +319,10 @@ const GOptionEntry app_options[] = {
   {"swap-file-schedule", '\0', 0, G_OPTION_ARG_STRING,
    &app.swap_schedule_str,
    "Crontab style scheduling for swaping to a new log file.", "PATTERN"},
+  {"max-queue-length", '\0', 0, G_OPTION_ARG_INT,
+   &max_queue_len,
+   "Maximum number of packets allowed to be queued internally. "
+   "Additional packets are dropped.", "LENGTH"},
   {NULL}
 };
 
@@ -358,6 +363,8 @@ main(int argc, char *argv[])
   app.captured_queue =
     g_async_queue_new_full((GDestroyNotify)pb_framer_packet_free);
   app.framer = pb_framer_new(app.capture_stream, app.captured_queue);
+  g_object_set(app.framer, "max-queue-len", max_queue_len,
+	       "speed", app.speed, NULL);
   g_signal_connect(app.framer, "packets-queued",
 		   (GCallback)packets_received, &app);
   loop = g_main_loop_new(NULL, FALSE);

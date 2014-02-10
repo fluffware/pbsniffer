@@ -20,6 +20,17 @@ enum {
 
 static guint pb_framer_signals[LAST_SIGNAL] = {0 };
 
+enum
+{
+  PROP_0 = 0,
+  PROP_MAX_QUEUE_LEN,
+  PROP_SPEED,
+  N_PROPERTIES
+};
+
+#define INITIAL_SPEED 500000
+#define INITIAL_MAX_QUEUE 10000
+
 struct _PBFramer
 {
   GObject parent_instance;
@@ -34,7 +45,7 @@ struct _PBFramer
   /* Time stamp corresponing to the beginning of input_buffer */
   gint64 input_buffer_ts;
   /* Number of microsecconds corresponding to one byte */
-  glong byte_period;
+  glong speed;
   gulong lost_packets;
   gint max_queue; /* Max queue length before starting to drop packets */
   gint min_queue; /* Don't signal the user until the queue has got this many
@@ -91,12 +102,54 @@ dispose(GObject *object)
 }
 
 static void
+set_property (GObject *object, guint property_id,
+	      const GValue *value, GParamSpec *pspec)
+{
+  PBFramer *framer = PB_FRAMER(object);
+  switch (property_id)
+    {
+    case PROP_MAX_QUEUE_LEN:
+      framer->max_queue = g_value_get_uint(value);
+      break;
+    case PROP_SPEED:
+      framer->speed = g_value_get_uint(value);
+      break;
+   default:
+       /* We don't have any other property... */
+       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
+      break;
+    }
+}
+
+static void
+get_property (GObject *object, guint property_id,
+	      GValue *value, GParamSpec *pspec)
+{
+  PBFramer *framer = PB_FRAMER(object);
+  switch (property_id) {
+  case PROP_MAX_QUEUE_LEN:
+    g_value_set_uint(value, framer->max_queue);
+    break;
+  case PROP_SPEED:
+    g_value_set_uint(value, framer->speed);
+    break;
+  default:
+    /* We don't have any other property... */
+    G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
+    break;
+  }
+}
+
+static void
 pb_framer_class_init (PBFramerClass *klass)
 {
+  GParamSpec *properties[N_PROPERTIES];
   GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
 
   gobject_class->finalize = finalize;
   gobject_class->dispose = dispose;
+  gobject_class->set_property = set_property;
+  gobject_class->get_property = get_property;
 
   /*Signals */
   pb_framer_signals[PACKETS_QUEUED] =
@@ -107,6 +160,20 @@ pb_framer_class_init (PBFramerClass *klass)
 		 NULL, NULL,
 		 g_cclosure_marshal_VOID__POINTER,
 		 G_TYPE_NONE, 1, G_TYPE_POINTER);
+  
+  properties[0] = NULL;
+  properties[PROP_MAX_QUEUE_LEN]
+    =  g_param_spec_uint("max-queue-len", "Max queue length",
+			 "Maximum number of packets that will be queued"
+			 "before starting dropping them",
+			 10, 100000000, INITIAL_MAX_QUEUE,
+			  G_PARAM_READWRITE |G_PARAM_STATIC_STRINGS);
+  properties[PROP_SPEED]
+    =  g_param_spec_uint("speed", "Speed",
+			 "Speed in bps. Used for adjusting timestamps.",
+			 9600, 100000000, INITIAL_SPEED,
+			 G_PARAM_READWRITE |G_PARAM_STATIC_STRINGS);
+  g_object_class_install_properties(gobject_class, N_PROPERTIES, properties);
 }
 
 static void
@@ -119,9 +186,9 @@ pb_framer_init (PBFramer *framer)
   framer->input_buffer_capacity = 0;
   framer->input_buffer = NULL;
   framer->packet_len = 0;
-  framer->byte_period = 0;
+  framer->speed = INITIAL_SPEED;
   framer->lost_packets = 0;
-  framer->max_queue = 1000;
+  framer->max_queue = INITIAL_MAX_QUEUE;
   framer->min_queue = 10;
   framer->creator_context = NULL;
   framer->idle_signal = NULL;
@@ -183,14 +250,16 @@ GSourceFuncs queue_funcs =
     queue_finalize
   };
 
+#define BYTES_PERIOD(bytes, speed) \
+  (((11ULL * G_TIME_SPAN_SECOND) * (bytes)) / (speed))
 static void
 packet_done(PBFramer *framer)
 {
   if (g_async_queue_length(framer->queue) <= framer->max_queue) {
     PBFramerPacket *packet;
     gint64 ts = (framer->input_buffer_ts
-	       + framer->byte_period * (framer->packet_start
-					- framer->input_buffer));
+		 + BYTES_PERIOD(framer->packet_start - framer->input_buffer,
+				framer->speed));
     packet = g_new(PBFramerPacket, 1);
     packet->data = g_new(guint8, framer->packet_len);
     memcpy(packet->data, framer->packet_start, framer->packet_len);
@@ -364,8 +433,8 @@ framer_thread(gpointer data)
       GError *err = NULL;
       gsize len = r;
       /* Adjust the time stamp to the beginning of the input buffer */
-      framer->input_buffer_ts -=
-	framer->byte_period * (framer->packet_len + r);
+      framer->input_buffer_ts -= BYTES_PERIOD(framer->packet_len + r,
+					      framer->speed);
       read_end = r + read_start;
       while (!parse_data(framer, len, &err)) {
 	g_warning("Failed to parse packet: %s", err->message);
