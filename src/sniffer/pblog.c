@@ -167,12 +167,12 @@ create_output_thread(gpointer data)
       g_free(file_name);
       log_file->stream = g_buffered_output_stream_new(G_OUTPUT_STREAM(stream));
       g_filter_output_stream_set_close_base_stream(G_FILTER_OUTPUT_STREAM(log_file->stream), TRUE);
-
+      g_object_unref(stream);
       pcapng_add_string_option(&options, PCAPNG_OPTION_SHB_USERAPPL, "pblog"); 
       if (!pcapng_write_section_header(log_file->stream, -1, options, &err)) {
 	g_critical("Failed to write section header: %s", err->message);
 	g_object_unref(file);
-	g_object_unref(stream);
+	g_clear_object(&log_file->stream);
 	g_clear_error(&err);
 	return NULL;
       }
@@ -267,7 +267,7 @@ get_log_file(AppContext *app)
   }
   return log_file;
 }
-  
+
 static void
 packets_received(PBFramer *framer, GAsyncQueue *queue, AppContext *app)
 {
@@ -275,7 +275,6 @@ packets_received(PBFramer *framer, GAsyncQueue *queue, AppContext *app)
   PBFramerPacket *packet;
   LogFile *log_file = get_log_file(app);
   while ((packet = g_async_queue_try_pop(queue)) != NULL) {
-#if 1
     if (log_file->end <= packet->timestamp) {
       log_file = swap_file(app);
     }
@@ -285,7 +284,6 @@ packets_received(PBFramer *framer, GAsyncQueue *queue, AppContext *app)
       g_warning("Failed to write packet to log: %s", err->message);
       g_clear_error(&err);
     }
-#endif
 #if 0
     {
       guint i;
@@ -297,6 +295,7 @@ packets_received(PBFramer *framer, GAsyncQueue *queue, AppContext *app)
       g_string_free(str, TRUE);
     }
 #endif
+    pb_framer_packet_free(packet);
   }
 }
 
@@ -329,6 +328,9 @@ main(int argc, char *argv[])
   int ser_fd;
   GError *err = NULL;
   GOptionContext *opt_ctxt;
+#if MEM_DEBUG
+  g_mem_set_vtable(glib_mem_profiler_table);
+#endif  
   g_type_init();
   app_init(&app);
   opt_ctxt = g_option_context_new (" - log Profibus traffic");
@@ -366,5 +368,8 @@ main(int argc, char *argv[])
   g_main_loop_unref(loop);
   g_message("Exiting"); 
   app_cleanup(&app);
+#if MEM_DEBUG
+  g_mem_profile();
+#endif
   return EXIT_SUCCESS;
 }
