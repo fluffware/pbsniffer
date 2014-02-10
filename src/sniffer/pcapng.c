@@ -16,7 +16,8 @@ pcapng_write_chain(GOutputStream *out, ByteChain *chain,  GError **err)
 {
   while(chain) {
     if (chain->len) {
-      if (!g_output_stream_write(out, chain->data.bytes, chain->len, NULL,err))
+      gsize written;
+      if (!g_output_stream_write_all(out, chain->data.bytes, chain->len, &written, NULL,err))
 	return FALSE;
     } else {
       if (chain->data.sub_chain) {
