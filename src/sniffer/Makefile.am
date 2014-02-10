@@ -1,6 +1,7 @@
 AM_CFLAGS = @GLIB_CFLAGS@
 
-bin_PROGRAMS = pbsniffer hex2pcapng pcapngtst
+noinst_PROGRAMS =  pcapngtst hex2pcapng scheduled_time_test
+bin_PROGRAMS = pbsniffer pblog
 
 pbsniffer_SOURCES = sniffer.c \
 serial.c serial.h \
@@ -18,3 +19,17 @@ hex2pcapng_SOURCES = hex2pcapng.c \
 pcapng.c pcapng.h
 
 hex2pcapng_LDADD= @GLIB_LIBS@ 
+
+pblog_SOURCES=pblog.c \
+pbframer.c pbframer.h \
+thread_utils.c thread_utils.h \
+serial.c serial.h \
+scheduled_time.c scheduled_time.h\
+pcapng.c pcapng.h
+
+pblog_LDADD= @GLIB_LIBS@ 
+
+scheduled_time_test_SOURCES = scheduled_time_test.c \
+scheduled_time.c scheduled_time.h
+
+scheduled_time_test_LDADD= @GLIB_LIBS@
