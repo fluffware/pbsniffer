@@ -457,7 +457,6 @@ PBFramer *
 pb_framer_new(GInputStream *input, GAsyncQueue *queue)
 {
   PBFramer *framer;
-  g_type_init();
   framer = g_object_new(PB_FRAMER_TYPE, NULL);
   framer->input = input;
   g_object_ref(input);
