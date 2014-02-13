@@ -354,6 +354,7 @@ sigint_handler(gpointer user_data)
 
 AppContext app;
 gint max_queue_len = 10000;
+gboolean filter = FALSE;
 
 const GOptionEntry app_options[] = {
   {"device", 'd', 0, G_OPTION_ARG_STRING,
@@ -369,6 +370,8 @@ const GOptionEntry app_options[] = {
    &max_queue_len,
    "Maximum number of packets allowed to be queued internally. "
    "Additional packets are dropped.", "LENGTH"},
+  {"filter", '\0', 0, G_OPTION_ARG_NONE,
+   &filter, "Don't log repeated packets", NULL},
   {NULL}
 };
 
@@ -404,7 +407,9 @@ main(int argc, char *argv[])
     app_cleanup(&app);
     return EXIT_FAILURE;
   }
-  app.filter = pb_filter_new();
+  if (filter) {
+    app.filter = pb_filter_new();
+  }
   app.output_thread = g_thread_new("Log file", create_output_thread, &app);
   app.capture_stream = g_unix_input_stream_new(ser_fd, TRUE);
   app.captured_queue =
