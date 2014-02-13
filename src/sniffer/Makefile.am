@@ -24,7 +24,8 @@ pblog_SOURCES=pblog.c \
 pbframer.c pbframer.h \
 serial.c serial.h \
 scheduled_time.c scheduled_time.h\
-pcapng.c pcapng.h
+pcapng.c pcapng.h \
+pbfilter.c pbfilter.h
 
 pblog_LDADD= @GLIB_LIBS@ 
 

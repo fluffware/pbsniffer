@@ -8,6 +8,7 @@
 #include <pcapng.h>
 #include <pcap.h>
 #include <string.h>
+#include <pbfilter.h>
 
 typedef struct _LogFile LogFile;
 
@@ -27,6 +28,7 @@ struct AppContext
   guint speed;
   PBFramer *framer;
   GAsyncQueue *captured_queue;
+  PBFilter *filter;
   gchar *file_prefix;
 
   gchar *swap_schedule_str;
@@ -66,6 +68,7 @@ app_init(AppContext *app)
   app->speed = 500000;
   app->framer = NULL;
   app->captured_queue = NULL;
+  app->filter = NULL;
   app->file_prefix = "/tmp/pblog";
   app->swap_schedule_str = "0 1 * * *"; /* Swap every hour */
 
@@ -101,6 +104,8 @@ app_cleanup(AppContext* app)
     g_async_queue_unref(app->captured_queue);
     app->captured_queue = NULL;
   }
+
+  g_clear_object(&app->filter);
   
   for (i = 0; i < 3; i++) {
     log_file_clear(&app->log_files[i]);
@@ -111,6 +116,42 @@ app_cleanup(AppContext* app)
 }
 
 #define FILE_SUFFIX ".pcapng"
+
+static void
+close_log_file(LogFile *log_file)
+{
+  if (log_file->file) { /* No file to close when starting */
+    GError *err = NULL;
+    gchar *prefix;
+    gchar *prefix_end;
+    gchar time_buffer[40];
+    gchar *file_name;
+    GFile *renamed;
+    if (!g_output_stream_close(log_file->stream, NULL, &err)) {
+      g_warning("Closing file failed: %s", err->message);
+      g_clear_error(&err);
+    }
+    g_clear_object(&log_file->stream);
+    prefix = g_file_get_basename(log_file->file);
+    prefix_end = rindex(prefix, '_');
+    g_assert(prefix_end);
+    *prefix_end = '\0';
+    g_snprintf(time_buffer, sizeof(time_buffer), "%lld-%lld",
+	       log_file->start, log_file->end);
+    file_name = g_strconcat(prefix, "_", time_buffer, FILE_SUFFIX,
+			    NULL);
+    g_free(prefix);
+    renamed = g_file_set_display_name(log_file->file, file_name, NULL, &err);
+    g_free(file_name);
+    if (!renamed) {
+      g_warning("Renaming file failed: %s", err->message);
+      g_clear_error(&err);
+    }
+    g_object_unref(renamed);
+    g_clear_object(&log_file->file);
+  }
+}
+
 
 /* Opens and closes log files */
 static gpointer
@@ -135,8 +176,27 @@ create_output_thread(gpointer data)
     next_changed = app->next_file != next_file;
     write_changed = app->write_file != write_file;
     g_mutex_unlock(&app->log_file_lock);
-    if (g_cancellable_is_cancelled(app->cancel)) return NULL;
-  
+    if (g_cancellable_is_cancelled(app->cancel)) {
+      LogFile *log_file;
+      log_file = &app->log_files[write_file];
+      if (log_file->file) {
+	log_file->end = g_get_real_time();
+	close_log_file(log_file);
+      }
+      if (next_file != write_file) {
+	/* Close and delete unused file */
+	log_file = &app->log_files[next_file];
+	if (!g_output_stream_close(log_file->stream, NULL, &err)) {
+	  g_warning("Closing file failed: %s", err->message);
+	  g_clear_error(&err);
+	}
+	g_clear_object(&log_file->stream);
+	
+	g_file_delete(log_file->file, NULL, NULL);
+	g_clear_object(&log_file->file);
+      }
+      return NULL;
+    }
     if (next_changed) {
       ByteChain *options = NULL;
       LogFile *log_file;
@@ -199,35 +259,7 @@ create_output_thread(gpointer data)
     if (write_changed) {
       LogFile *log_file;
       log_file = &app->log_files[write_file];
-      if (log_file->file) { /* No file to close when starting */
-	gchar *prefix;
-	gchar *prefix_end;
-	gchar time_buffer[40];
-	gchar *file_name;
-	GFile *renamed;
-	if (!g_output_stream_close(log_file->stream, NULL, &err)) {
-	  g_warning("Closing file failed: %s", err->message);
-	  g_clear_error(&err);
-	}
-	g_clear_object(&log_file->stream);
-	prefix = g_file_get_basename(log_file->file);
-	prefix_end = rindex(prefix, '_');
-	g_assert(prefix_end);
-	*prefix_end = '\0';
-	g_snprintf(time_buffer, sizeof(time_buffer), "%lld-%lld",
-		   log_file->start, log_file->end);
-	file_name = g_strconcat(prefix, "_", time_buffer, FILE_SUFFIX,
-				NULL);
-	g_free(prefix);
-	renamed = g_file_set_display_name(log_file->file, file_name, NULL, &err);
-	g_free(file_name);
-	if (!renamed) {
-	  g_warning("Renaming file failed: %s", err->message);
-	  g_clear_error(&err);
-	}
-	g_object_unref(renamed);
-	g_clear_object(&log_file->file);
-      }
+      close_log_file(log_file);
       write_file = (write_file + 1) % 3;
     }
     g_debug("Thread: %d %d Write %d %d", write_file, next_file, app->write_file, app->next_file);
@@ -269,20 +301,34 @@ get_log_file(AppContext *app)
 }
 
 static void
-packets_received(PBFramer *framer, GAsyncQueue *queue, AppContext *app)
+packet_output(gsize length, const guint8 *data, gint64 ts,
+	      gpointer user_data)
 {
   GError *err = NULL;
+  LogFile *log_file = user_data;
+  if (!pcapng_write_enhanced_packet(log_file->stream, 0, ts,
+				    length, length,
+				    data, NULL, &err)){
+    g_warning("Failed to write packet to log: %s", err->message);
+    g_clear_error(&err);
+  }
+}
+
+static void
+packets_received(PBFramer *framer, GAsyncQueue *queue, AppContext *app)
+{
   PBFramerPacket *packet;
   LogFile *log_file = get_log_file(app);
   while ((packet = g_async_queue_try_pop(queue)) != NULL) {
     if (log_file->end <= packet->timestamp) {
       log_file = swap_file(app);
     }
-    if (!pcapng_write_enhanced_packet(log_file->stream, 0, packet->timestamp,
-				      packet->length, packet->length,
-				      packet->data, NULL, &err)){
-      g_warning("Failed to write packet to log: %s", err->message);
-      g_clear_error(&err);
+    if (app->filter) {
+      pb_filter_set_output(app->filter, packet_output, log_file);
+      pb_filter_input(app->filter,
+		      packet->length, packet->data, packet->timestamp);
+    } else {
+      packet_output(packet->length, packet->data, packet->timestamp, log_file);
     }
 #if 0
     {
@@ -358,6 +404,7 @@ main(int argc, char *argv[])
     app_cleanup(&app);
     return EXIT_FAILURE;
   }
+  app.filter = pb_filter_new();
   app.output_thread = g_thread_new("Log file", create_output_thread, &app);
   app.capture_stream = g_unix_input_stream_new(ser_fd, TRUE);
   app.captured_queue =
