@@ -214,14 +214,14 @@ packets_equal(gsize a_len, const guint8 *a_data,
   /* Check that addresses are the same */
   if (a_data[1] != b_data[1] || a_data[2] != b_data[2]) return FALSE;
   /* Check function code */
-  if (a_data[4] & 0x40) {
+  if (a_data[3] & 0x40) {
     /* Ignore alternating bit in request */
-    if (((a_data[4] ^ b_data[4]) & 0xcf) != 0) return FALSE;
+    if (((a_data[3] ^ b_data[3]) & 0xcf) != 0) return FALSE;
   } else {
-    if (a_data[4] != b_data[4]) return FALSE;
+    if (a_data[3] != b_data[3]) return FALSE;
   }
   /* Check PDU */
-  if (memcmp(&a_data[5], &b_data[5], a_len - 7) != 0) return FALSE;
+  if (memcmp(&a_data[4], &b_data[4], a_len - 6) != 0) return FALSE;
   return TRUE;
 }
 
