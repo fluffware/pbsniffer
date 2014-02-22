@@ -6,7 +6,6 @@
 #include <glib-unix.h>
 #include <gio/gunixinputstream.h>
 #include <pcapng.h>
-#include <pcap.h>
 #include <string.h>
 #include <gio/gunixoutputstream.h>
 
@@ -102,7 +101,7 @@ open_output(AppContext *app, GError **err)
     return FALSE;
   }
   pcapng_clear_options(&options);
-  if (!pcapng_write_interface_description(app->output, DLT_USER0,
+  if (!pcapng_write_interface_description(app->output, DLT_PROFIBUS_DL,
 					  256, options, err)) {
     pcapng_clear_options(&options);
     return FALSE;

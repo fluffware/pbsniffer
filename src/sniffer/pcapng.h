@@ -4,6 +4,11 @@
 #include <glib.h>
 #include <gio/gio.h>
 
+/* Hardcode it here so we don't need to depend on pcap.h */
+#ifndef DLT_PROFIBUS_DL	
+#define DLT_PROFIBUS_DL		257
+#endif
+
 #define PCAPNG_OPTION_END 0
 #define PCAPNG_OPTION_COMMENT 1
 

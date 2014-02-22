@@ -7,7 +7,6 @@
 #include <glib-unix.h>
 #include <gio/gunixinputstream.h>
 #include <pcapng.h>
-#include <pcap.h>
 #include <write_libpcap.h>
 
 #define MAX_PACKET_LEN 256
@@ -602,7 +601,7 @@ main(int argc, char *argv[])
     }
     if (app.use_libpcap) {
       if (!libpcap_write_global_header(app.capture_output,
-				       0, 256, DLT_USER0, &err)) {
+				       0, 256, DLT_PROFIBUS_DL, &err)) {
 	g_printerr("Failed to write global header: %s\n", err->message);
 	app_cleanup(&app);
 	return EXIT_FAILURE;
@@ -616,7 +615,7 @@ main(int argc, char *argv[])
       }
       pcapng_clear_options(&options);
       pcapng_add_string_option(&options, PCAPNG_OPTION_IF_NAME, app.device); 
-      if (!pcapng_write_interface_description(app.capture_output, DLT_USER0,
+      if (!pcapng_write_interface_description(app.capture_output, DLT_PROFIBUS_DL,
 					      256, options, &err)) {
 	g_printerr("Failed to write interface description: %s\n", err->message);
 	app_cleanup(&app);

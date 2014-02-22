@@ -6,7 +6,6 @@
 #include <pbframer.h>
 #include <scheduled_time.h>
 #include <pcapng.h>
-#include <pcap.h>
 #include <string.h>
 #include <pbfilter.h>
 
@@ -241,7 +240,7 @@ create_output_thread(gpointer data)
       if_speed = app->speed;
       pcapng_add_option(&options, PCAPNG_OPTION_IF_SPEED, 8,
 			(guint8*)&if_speed); 
-      if (!pcapng_write_interface_description(log_file->stream, DLT_USER0,
+      if (!pcapng_write_interface_description(log_file->stream, DLT_PROFIBUS_DL,
 					      256, options, &err)) {
 	g_critical("Failed to write interface description: %s\n", err->message);
 	g_object_unref(file);

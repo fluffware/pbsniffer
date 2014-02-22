@@ -1,6 +1,5 @@
 #include <pcapng.h>
 #include <stdlib.h>
-#include <pcap.h>
 
 int
 main(int argc, const char *argv[])
@@ -24,7 +23,7 @@ main(int argc, const char *argv[])
   }
   pcapng_clear_options(&options);
   pcapng_add_string_option(&options, PCAPNG_OPTION_IF_NAME, "/dev/ttyUSB0"); 
-  if (!pcapng_write_interface_description(G_OUTPUT_STREAM(out), DLT_USER0, 256, options, &err)) {
+  if (!pcapng_write_interface_description(G_OUTPUT_STREAM(out), DLT_PROFIBUS_DL, 256, options, &err)) {
      g_printerr("Failed to write interface description: %s\n", err->message);
      return EXIT_FAILURE;
   }
