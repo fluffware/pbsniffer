@@ -1,36 +1,24 @@
 #include <stdlib.h>
 #include <wiretap/wtap.h>
 #include <stdio.h>
-
+#include <poll.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <asm/termios.h>
-#include <asm/ioctls.h>
+#include <linux/termios.h>
 #include <string.h>
 #include <unistd.h>
 
 
-#ifndef BOTHER
-#define    BOTHER CBAUDEX
-#endif
 extern int ioctl(int d, int request, ...);
 
-
-int 
-profibus_serial_open(const char *device, unsigned int rate, GError **err)
+gboolean
+set_termios(int fd, unsigned int rate, GError **err)
 {
   struct termios2 settings;
-  int fd = open(device, O_RDWR);
-  if (fd < 0) {
-    g_set_error(err, G_FILE_ERROR, g_file_error_from_errno(errno),
-		"open failed: %s", strerror(errno));
-    return -1;
-  }
   if (ioctl(fd, TCGETS2, &settings) < 0) {
-      g_set_error(err, G_FILE_ERROR, g_file_error_from_errno(errno),
+    g_set_error(err, G_FILE_ERROR, g_file_error_from_errno(errno),
 		  "ioctl TCGETS2 failed: %s", strerror(errno));
-    close(fd);
-    return -1;
+    return FALSE;
   }
   settings.c_iflag &= ~(IGNBRK | BRKINT | IGNPAR | INPCK | ISTRIP
 			| INLCR | IGNCR | ICRNL | IXON | PARMRK);
@@ -44,12 +32,48 @@ profibus_serial_open(const char *device, unsigned int rate, GError **err)
   if (ioctl(fd, TCSETS2, &settings) < 0) {
     g_set_error(err, G_FILE_ERROR, g_file_error_from_errno(errno),
 		"ioctl TCSETS2 failed: %s", strerror(errno));
+    return FALSE;
+  }
+  return TRUE;
+}
+int 
+profibus_serial_open(const char *device,  unsigned int rate, GError **err)
+{
+  int fd = open(device, O_RDWR);
+  if (fd < 0) {
+    g_set_error(err, G_FILE_ERROR, g_file_error_from_errno(errno),
+		"open failed: %s", strerror(errno));
+    return -1;
+  }
+  if (!set_termios(fd, rate, err)) {
     close(fd);
     return -1;
   }
-  
   return fd;
 }
+
+int
+open_pseudo_terminal(GError **err)
+{
+  int fd = posix_openpt(O_RDWR);
+  if (fd < 0) {
+    g_set_error(err, G_FILE_ERROR, g_file_error_from_errno(errno),
+		"posix_openpt failed: %s", strerror(errno));
+    return -1;
+  }
+  if (!set_termios(fd, 115200, err)) {
+    close(fd);
+    return -1;
+  }
+  if (unlockpt(fd) < 0) {
+    g_set_error(err, G_FILE_ERROR, g_file_error_from_errno(errno),
+		"unlockpt failed: %s", strerror(errno));
+    return -1;
+  }
+  g_message("Use %s as tty", ptsname(fd));
+  return fd;
+}
+
 
 static char *device = "/dev/ttyS0";
 static gint speed = 500000;
@@ -89,23 +113,38 @@ main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  ser_fd = profibus_serial_open(device, speed, &err);
-  if (ser_fd < 0) {
-    g_printerr("Failed open serial port: %s\n", err->message);
-    return EXIT_FAILURE;
+  if (pseudo) {
+    ser_fd = open_pseudo_terminal(&err);
+    if (ser_fd < 0) {
+      g_printerr("Failed open pseudo terminal: %s\n", err->message);
+      return EXIT_FAILURE;
+    }
+  } else {
+    ser_fd = profibus_serial_open(device, speed, &err);
+    if (ser_fd < 0) {
+      g_printerr("Failed open serial port: %s\n", err->message);
+      return EXIT_FAILURE;
+    }
   }
-  
+  fcntl(ser_fd, F_SETFL, 0);
   while(TRUE) {
     guint8 *data;
     struct wtap_pkthdr *hdr;
     if (!wtap_read(w, &werr, &err_info, &data_offset)) {
+      if (err == 0) break;
       g_printerr("Failed to read packet file: %d\n", werr);
       return EXIT_FAILURE;
     }
     hdr = wtap_phdr(w);
     data = wtap_buf_ptr(w);
-    write(ser_fd, data, hdr->len);
+    if (write(ser_fd, data, hdr->len) != hdr->len) {
+      g_printerr("Failed to write to serial device: %s\n", strerror(errno));
+      break;
+    }
+    /* g_debug("Write %d", hdr->len); */
   }
   wtap_close(w);
+  g_message("EOF");
+  close(ser_fd);
   return EXIT_SUCCESS;
 }

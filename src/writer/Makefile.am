@@ -1,4 +1,4 @@
-AM_CFLAGS = @GLIB_CFLAGS@ -I/usr/include/wireshark
+AM_CFLAGS = @GLIB_CFLAGS@ -I/usr/include/wireshark -D_XOPEN_SOURCE=600
 
 noinst_PROGRAMS =  pbwriter
 
