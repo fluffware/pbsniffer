@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<signal-list>
+  <signal>
+    <id>in1</id>
+    <label>In 1</label>
+    <dst>1</dst>
+    <src>12</src>
+    <start>0</start>
+    <width>8</width>
+    <unsigned/>
+  </signal>
+  <signal>
+    <id>in2</id>
+    <label>In 2</label>
+    <dst>1</dst>
+    <src>12</src>
+    <start>0</start>
+    <width>8</width>
+    <unsigned/>
+  </signal>
+  
+</signal-list>

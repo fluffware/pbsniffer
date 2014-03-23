@@ -1,1 +1,1 @@
-SUBDIRS=sniffer writer
+SUBDIRS=sniffer writer signallogger
