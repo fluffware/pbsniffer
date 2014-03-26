@@ -1,0 +1,13 @@
+.step div {
+    display: inline-block;
+}
+
+#graph {
+    vertical-align: top;
+    display: inline-block;
+}
+
+table {
+    vertical-align: top;
+    display: inline-block;
+}

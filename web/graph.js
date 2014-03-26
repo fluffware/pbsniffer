@@ -701,6 +701,21 @@ function TimeCanvas(parent, width, height)
     }
     this.addBlock = addBlock;
 
+    function zoomTo(display_length)
+    {
+	var mid_display = this.display_start + context.getDisplayLength() / 2;
+	context.setDisplayLength(display_length);
+	var block_length = display_length * 3;
+	context.setBlockLength(block_length);
+	var block_start = mid_display - block_length / 2;
+	context.setBlockStart(block_start);
+	this.update();
+
+	var offset = (block_start - this.display_start) * this.width / display_length;
+	this.canvas.setAttribute("transform", "translate("+offset+",0)");
+    }
+    this.zoomTo = zoomTo;
+
     function moveTo(time, align)
     {
 	var block_start = context.getBlockStart();
@@ -761,11 +776,15 @@ function StepCanvas(canvas, time_graph)
     var canvas = canvas;
     console.log(canvas);
     var time_graph = time_graph;
+    
+    function current() {
+	return new Date(canvas.display_start
+			+ canvas.getContext().getDisplayLength() / 2);
+    }
 
     function forward(row)
     {
-	var date = new Date(canvas.display_start
-			    + canvas.getContext().getDisplayLength() / 2);
+	var date = current();
 	time_graph.next(row, date);
 	canvas.moveTo(date.getTime(),0.5);
     }
@@ -773,12 +792,58 @@ function StepCanvas(canvas, time_graph)
 
     function backward(row)
     {
-	var date = new Date(canvas.display_start
-			    + canvas.getContext().getDisplayLength() / 2);
+	var date = current();
 	time_graph.prev(row, date);
 	canvas.moveTo(date.getTime(), 0.5);
     }
+
     this.backward = backward;
 
+    function msec(ms) 
+    {
+	var date = current();
+	date.setMilliseconds(date.getMilliseconds()  + ms);
+	canvas.moveTo(date.getTime(), 0.5);
+    }
+    this.msec = msec;
+
+    function sec(s) 
+    {
+	var date = current();
+	date.setSeconds(date.getSeconds()  + s);
+	canvas.moveTo(date.getTime(), 0.5);
+    }
+    this.sec = sec;
+
+    function day(d) 
+    {
+	var date = current();
+	date.setDate(date.getDate()  + d);
+	canvas.moveTo(date.getTime(), 0.5);
+    }
+    this.day = day;
+
+    function month(m) 
+    {
+	var date = current();
+	date.setMonth(date.getMonth()  + m);
+	canvas.moveTo(date.getTime(), 0.5);
+    }
+    this.month = month;
+
+    function year(y) 
+    {
+	var date = current();
+	date.setFullYear(date.getFullYear()  + y);
+	canvas.moveTo(date.getTime(), 0.5);
+    }
+    this.year = year;
+    
+    function zoom(scale)
+    {
+	var length = canvas.getContext().getDisplayLength()
+	canvas.zoomTo(length * scale);
+    }
+    this.zoom = zoom;
 }
     
