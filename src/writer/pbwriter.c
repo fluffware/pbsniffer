@@ -78,6 +78,7 @@ open_pseudo_terminal(GError **err)
 static char *device = "/dev/ttyS0";
 static gint speed = 500000;
 static gint pseudo = FALSE;
+static gint timing = FALSE;
 
 const GOptionEntry app_options[] = {
   {"device", 'd', 0, G_OPTION_ARG_STRING,
@@ -86,6 +87,9 @@ const GOptionEntry app_options[] = {
    &speed, "Serial speed (bps)", "SPEED"},
   {"pseudo-terminal", 'p', 0, G_OPTION_ARG_NONE,
    &pseudo, "Open pseudo terminal", NULL},
+  {"timing", 't', 0, G_OPTION_ARG_NONE,
+   &timing, "Try to time packets the same way as the packet file",
+   NULL},
   {NULL}
 };
 
@@ -99,6 +103,8 @@ main(int argc, char *argv[])
   gint64 data_offset;
   wtap *w;
   GOptionContext *opt_ctxt;
+  gint64 ts_start_us = 0;
+  gint64 time_start_us = 0;
   opt_ctxt = g_option_context_new ("FILE");
   g_option_context_add_main_entries(opt_ctxt, app_options, NULL);
   if (!g_option_context_parse(opt_ctxt, &argc, &argv, &err)) {
@@ -126,7 +132,7 @@ main(int argc, char *argv[])
       return EXIT_FAILURE;
     }
   }
-  fcntl(ser_fd, F_SETFL, 0);
+  
   while(TRUE) {
     guint8 *data;
     struct wtap_pkthdr *hdr;
@@ -137,6 +143,20 @@ main(int argc, char *argv[])
     }
     hdr = wtap_phdr(w);
     data = wtap_buf_ptr(w);
+    if (timing) {
+      if (time_start_us == 0) {
+	ts_start_us = hdr->ts.secs * 1000000LL +  hdr->ts.nsecs / 1000;
+	time_start_us = g_get_monotonic_time();
+      } else {
+	gint64 ts = hdr->ts.secs * 1000000LL +  hdr->ts.nsecs / 1000;
+	gint64 next = time_start_us + (ts - ts_start_us);
+	gint64 now = g_get_monotonic_time();
+	gint64 delay = next - now;
+	if (delay > 0) {
+	  poll(NULL, 0, delay / 1000);
+	}
+      }
+    }
     if (write(ser_fd, data, hdr->len) != hdr->len) {
       g_printerr("Failed to write to serial device: %s\n", strerror(errno));
       break;
