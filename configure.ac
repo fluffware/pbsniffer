@@ -6,6 +6,7 @@ AC_PROG_CC
 AC_PROG_CC_C99
 AC_SYS_LARGEFILE
 AM_PATH_GLIB_2_0(2.30.0,,, [gobject gio gio-unix])
+MYSQL_CLIENT()
 
-AC_CONFIG_FILES([Makefile src/Makefile src/sniffer/Makefile src/writer/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/sniffer/Makefile src/writer/Makefile src/signallogger/Makefile])
 AC_OUTPUT

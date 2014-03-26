@@ -1,23 +1,37 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <signal-list>
-  <signal>
-    <id>in1</id>
-    <label>In 1</label>
-    <dst>1</dst>
-    <src>12</src>
-    <start>0</start>
-    <width>8</width>
-    <unsigned/>
-  </signal>
-  <signal>
-    <id>in2</id>
-    <label>In 2</label>
-    <dst>1</dst>
-    <src>12</src>
-    <start>0</start>
-    <width>8</width>
-    <unsigned/>
-  </signal>
-  
+  <trace src="2" dst="10">
+    <signal id="in1">
+      <label>In 1</label>
+      <mask offset="0" width="8"/>
+      <unsigned/>
+    </signal>
+    <signal id="in2">
+      <label>In 2</label>
+      <mask offset="8" width="8"/>
+      <signed/>
+    </signal>
+     <signal id="flip">
+      <label>Flip</label>
+      <mask offset="64" width="8"/>
+      <signed/>
+    </signal>
+    
+  </trace>
+  <trace src="10" dst="2">
+    <signal id="bit1">
+      <label>Bit 1</label>
+      <mask offset="4" width="1"/>
+    </signal>
+    <signal id="bit2">
+      <mask offset="3" width="1"/>
+    </signal>
+  </trace>
+   <trace src="1" dst="35">
+    <signal id="toggle">
+      <label>Toggle</label>
+      <mask offset="1" width="1"/>
+    </signal>
+   </trace>
 </signal-list>
