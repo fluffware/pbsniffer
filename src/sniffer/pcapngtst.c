@@ -9,7 +9,6 @@ main(int argc, const char *argv[])
   GFile *file;
   GFileOutputStream *out;
   ByteChain *options = NULL;
-  g_type_init();
   file = g_file_new_for_commandline_arg (argv[1]);
   out = g_file_replace(file,NULL, FALSE, G_FILE_CREATE_NONE, NULL, &err);
   if (!out) {

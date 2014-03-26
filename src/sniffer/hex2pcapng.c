@@ -272,7 +272,6 @@ main(int argc, char *argv[])
 {
   GError *err = NULL;
   GOptionContext *opt_ctxt;
-  g_type_init();
   app_init(&app);
 
   opt_ctxt = g_option_context_new (" - convert hex encoded packets to PCAPNG");

@@ -384,7 +384,6 @@ main(int argc, char *argv[])
 #if MEM_DEBUG
   g_mem_set_vtable(glib_mem_profiler_table);
 #endif  
-  g_type_init();
   app_init(&app);
   opt_ctxt = g_option_context_new (" - log Profibus traffic");
   g_option_context_add_main_entries(opt_ctxt, app_options, NULL);

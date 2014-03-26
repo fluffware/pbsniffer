@@ -561,7 +561,6 @@ main(int argc, char *argv[])
   GError *err = NULL;
   GOptionContext *opt_ctxt;
   app_init(&app);
-  g_type_init();
   opt_ctxt = g_option_context_new (" - log Profibus traffic");
   g_option_context_add_main_entries(opt_ctxt, app_options, NULL);
   if (!g_option_context_parse(opt_ctxt, &argc, &argv, &err)) {
