@@ -121,7 +121,7 @@ function GraphBlock(context)
     this.setContext = setContext;
 }
 
-function NumericGraphBlock(context)
+function TextGraphBlock(context)
 {
     GraphBlock.call(this,context);
     this.text_width = 50;
@@ -138,6 +138,7 @@ function NumericGraphBlock(context)
 	for(var i = 0; i < ts_values.length; i+= 2) {
 	    var start = ts_values[i] - time_start;
 	    var value = ts_values[i+1];
+	    if (value == null) continue;
 	    var x = start * scale;
 	    if (x > graph_width) continue;
 	    var end_x = graph_width + 10;
@@ -177,8 +178,8 @@ function NumericGraphBlock(context)
 
 }
 
-NumericGraphBlock.prototype = new GraphBlock();
-NumericGraphBlock.prototype.constructor = NumericGraphBlock;
+TextGraphBlock.prototype = new GraphBlock();
+TextGraphBlock.prototype.constructor = TextGraphBlock;
 
 
 
@@ -549,9 +550,9 @@ var formats =
 function TimeGraphBlock(context)
 {
     GraphBlock.call(this,context);
-    var sub_blocks = [new NumericGraphBlock(parent), 
-		      new NumericGraphBlock(parent),
-		      new NumericGraphBlock(parent)];
+    var sub_blocks = [new TextGraphBlock(parent), 
+		      new TextGraphBlock(parent),
+		      new TextGraphBlock(parent)];
     var current_format = null;
     var parentSetContext = this.setContext;
 
@@ -582,14 +583,6 @@ function TimeGraphBlock(context)
 	var start_date = new Date(time_start);
 	var end_date = new Date(time_end)
 	
-	start = [start_date.getFullYear(), start_date.getMonth(),
-		 start_date.getDate(),
-		 start_date.getHours(), start_date.getMinutes(),
-		 start_date.getSeconds(), start_date.getMilliseconds()];
-	end = [end_date.getFullYear(), end_date.getMonth(),
-	       end_date.getDate(),
-	       end_date.getHours(), end_date.getMinutes(),
-	       end_date.getSeconds(), end_date.getMilliseconds()];
 	var format = null;
 	var block_time = (time_end - time_start) * min_text_width / this.getBlockWidth();;
 
@@ -704,6 +697,7 @@ function TimeCanvas(parent, width, height)
     function zoomTo(display_length)
     {
 	var mid_display = this.display_start + context.getDisplayLength() / 2;
+	this.display_start = mid_display - display_length / 2;
 	context.setDisplayLength(display_length);
 	var block_length = display_length * 3;
 	context.setBlockLength(block_length);
@@ -847,3 +841,53 @@ function StepCanvas(canvas, time_graph)
     this.zoom = zoom;
 }
     
+function SignalGraphBlock(url, signal)
+{
+    TextGraphBlock.call(this,null);
+    
+    var parentSetContext = this.setContext;
+    var parent_build_block = this.build_block;
+    var wait_elem = null;
+    var build_start;
+    var build_end;
+    var self = this;
+    function setContext(c)
+    {
+	console.log("SignalGraphBlock.setContext");
+	parentSetContext.call(this, c);
+    }
+    this.setContext = setContext;
+
+    function reply(data )
+    {
+	
+	self.getCanvas().removeChild(wait_elem);
+	
+	parent_build_block.call(self, build_start, build_end, []);
+    }
+    function error(req,status,error)
+    {
+	console.log("HTTP request failed: "+status+": "+error);
+    } 
+    function build_block(time_start, time_end)
+    {
+	block=document.createElementNS("http://www.w3.org/2000/svg","svg:rect");
+	block.setAttribute("x", 0);
+	block.setAttribute("y", this.getYPos());
+	block.setAttribute("width", this.getBlockWidth());
+	block.setAttribute("height", this.getBlockHeight());
+	block.setAttribute("style", "fill:red;stroke:none");
+	this.getCanvas().appendChild(block);
+	wait_elem = block;
+	build_start = time_start;
+	build_end = time_end;
+	var req_url = (url+"?start="+time_start+"&end="+time_end
+		       +"&signals="+signal);
+	jQuery.getJSON(req_url, reply).error(error);
+    }
+    this.build_block = build_block;
+}
+
+SignalGraphBlock.prototype = new TextGraphBlock();
+SignalGraphBlock.prototype.constructor = SignalGraphBlock;
+

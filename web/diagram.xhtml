@@ -15,9 +15,11 @@
       {
       var canvas = $('#graph_canvas').get(0);
       var tc = new TimeCanvas(canvas,500,300);
-      var b = new NumericGraphBlock();
-      //tc.addBlock(b);
-      //b.build_block(-1,5,[-2,1,0.4,4, 0.7, 8,1.5,0, 4,-3]);
+      var s1 = new SignalGraphBlock("/logs/test_log", "pos4");
+      s1.setYPos(canvas.getBBox().height - 80);
+      s1.setBlockHeight(20);
+      tc.addBlock(s1);
+      
       tb = new TimeGraphBlock(canvas);
       console.log(canvas.height);
       tb.setYPos(canvas.getBBox().height - 60);
