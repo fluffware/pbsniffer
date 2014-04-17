@@ -11,3 +11,54 @@ table {
     vertical-align: top;
     display: inline-block;
 }
+
+.graph-bg {
+    fill:#e0ffe0;
+    stroke:#000000;
+    stroke-width:1;
+}
+
+.label-bg {
+    fill:#e0ffe0;
+    stroke:#000000;
+    stroke-width:1;
+}
+
+.moved {
+    color:orange;
+}
+
+.action:hover {
+    color:#50ff50;
+    background:gray;
+    cursor:default;
+}
+    
+.time-cursor {
+    stroke-width:1;
+}
+
+#cursor-a {
+    stroke:red;
+}
+
+#cursor-label-a {
+    color:red;
+}
+
+#cursor-b {
+    stroke:purple;
+}
+
+#cursor-label-b {
+    color:purple;
+}
+
+.graph-block {
+    fill:#d0d0d0;
+    stroke:black;
+    stroke-width:1px;
+}
+.graph-text {
+}
+

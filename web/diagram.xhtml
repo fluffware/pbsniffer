@@ -13,25 +13,25 @@
     <script type="application/javascript">
       function start()
       {
+/*
       var canvas = $('#graph_canvas').get(0);
-      var tc = new TimeCanvas(canvas,500,300);
+      var tc = new TimeCanvas(canvas, 700, 100, labels_canvas, 150);
       var s1 = new SignalGraphBlock("/logs/test_log", "pos4");
       s1.setYPos(canvas.getBBox().height - 80);
       s1.setBlockHeight(20);
       tc.addBlock(s1);
       
-      tb = new TimeGraphBlock(canvas);
-      console.log(canvas.height);
+      tb = new TimeGraphBlock();
       tb.setYPos(canvas.getBBox().height - 60);
       tb.setBlockHeight(60);
       tc.addBlock(tb);
 
 
       var now = new Date();
-      var length =60000;
+      var length =60e9;
       tc.setDisplayLength(length);
       tc.setBlockLength(length * 3);;
-      tc.moveTo(now.getTime());
+      tc.moveTo(ms_to_ns(now.getTime()));
 
       step = new StepCanvas(tc, tb);
       function update() 
@@ -39,51 +39,54 @@
       var now = new Date();
       tc.moveTo(now.getTime(),0);
       setTimeout(update, 500);
-      }
+      }*/
       // update();
+
+      var graph = new SignalViewer("signal_graph", "/logs/test_log");
+      step = graph.getStepper();
+      $("#graph").append(graph.getTop());
+      graph.addSignal("pos1");
+      graph.addSignal("pos2");
+      graph.addSignal("pos3");
+      graph.addSignal("pos4");
+      graph.addSignal("pos5");
+      graph.addSignal("pos6");
+      graph.addSignal("pos7");
       }
     </script>
   </head>
   <body onload="start();">
     <h1>Tidslinje</h1>
-    <div id="graph">
-      <svg:svg       xmlns:svg="http://www.w3.org/2000/svg"
-		     xmlns:xlink="http://www.w3.org/1999/xlink"
-		     width="600"
-		     height="350"
-		     id="svg2"
-		     version="1.1">
-	<svg:clipPath id="canvas_clip">
-	  <svg:rect 
-	      width="500"
-	      height="300"
-	      x="0"
-	      y="0" />
-	</svg:clipPath>
-	<svg:g id="graph_canvas" transform="translate(20,1)"
-	       clip-path="url(#canvas_clip)">
-	  <svg:rect
-	      style="fill:#e0ffe0;stroke:#000000;stroke-width:1"
-	      id="rect2985"
-	      width="500"
-	      height="300"
-	      x="0"
-	      y="0" />
-	  <!--<svg:polyline fill="none" stroke="#000000" stroke-width="1" points="10,10 20,10 30,0 40,78 50,26, 60,73"/>-->
-	</svg:g>
-      </svg:svg>
-    </div>
-<!--
-    <div id="step0" class="step"><div onclick="step.backward(0);">&lt;</div>
-    <div onclick="step.forward(0);">&gt;</div></div>
-
-    <div id="step1" class="step"><div onclick="step.backward(1);">&lt;&lt;</div>
-    <div onclick="step.forward(1);">&gt;&gt;</div></div>
-
-    <div id="step2" class="step"><div onclick="step.backward(2);">&lt;&lt;&lt;</div>
-    <div onclick="step.forward(2);">&gt;&gt;&gt;</div></div>
--->
+    <div id="graph"/>
     <table >
+      <tr id="step_1ms" class="step">
+	<td >
+	  <img src="adjust_left.svg" alt="Decrease" onclick="step.msec(-1);"/>
+	</td>
+	<td>1ms</td>
+	<td>
+	  <img src="adjust_right.svg" alt="Increase" onclick="step.msec(1);"/>
+	</td>
+      </tr>
+      <tr id="step_10ms" class="step">
+	<td >
+	  <img src="adjust_left.svg" alt="Decrease" onclick="step.msec(-10);"/>
+	</td>
+	<td>10ms</td>
+	<td>
+	  <img src="adjust_right.svg" alt="Increase" onclick="step.msec(10);"/>
+	</td>
+      </tr>
+      <tr id="step_100ms" class="step">
+	<td >
+	  <img src="adjust_left.svg" alt="Decrease" onclick="step.msec(-100);"/>
+	</td>
+	<td>100ms</td>
+	<td>
+	  <img src="adjust_right.svg" alt="Increase" onclick="step.msec(100);"/>
+	</td>
+      </tr>
+      
       <tr id="step_1s" class="step">
 	<td >
 	  <img src="adjust_left.svg" alt="Decrease" onclick="step.sec(-1);"/>
@@ -156,10 +159,20 @@
 	  <img src="adjust_right.svg" alt="Increase" onclick="step.year(1);"/>
 	</td>
       </tr>
+      <tr id="step_1page" class="step">
+	<td>
+	  <img src="adjust_left.svg" alt="Decrease" onclick="step.page(-1);"/>
+	</td>
+	<td>1sida</td>
+	<td>
+	  <img src="adjust_right.svg" alt="Increase" onclick="step.page(1);"/>
+	</td>
+      </tr>
       <tr id="zoom_in_out" class="zoom">
 	<td  onclick="step.zoom(2);">-</td>Zoom
 	<td  onclick="step.zoom(.5);">+</td>
       </tr>
     </table>
+
   </body>
 </html>

@@ -11,7 +11,8 @@ struct AppContext
 {
   GError *err;
   MYSQL mysql;
-  MYSQL_STMT *insert_stmt;
+  MYSQL_STMT *insert_values_stmt;
+  MYSQL_STMT *insert_signals_stmt;
 
   gchar *dbhost;
   gchar *dbuser;
@@ -59,8 +60,11 @@ enum {
 static void 
 app_cleanup(AppContext *app)
 {
-  if (app->insert_stmt) {
-    mysql_stmt_close(app->insert_stmt);
+  if (app->insert_values_stmt) {
+    mysql_stmt_close(app->insert_values_stmt);
+  }
+  if (app->insert_signals_stmt) {
+    mysql_stmt_close(app->insert_signals_stmt);
   }
   mysql_close(&app->mysql);
   mysql_thread_end();
@@ -94,7 +98,8 @@ app_init(AppContext *app)
 {
   mysql_init(&app->mysql);
   mysql_thread_init();
-  app->insert_stmt = NULL;
+  app->insert_values_stmt = NULL;
+  app->insert_signals_stmt = NULL;
   app->signal_extractor = NULL;
   app->wtap_handle = NULL;
   app->signal_config = NULL;
@@ -107,26 +112,41 @@ app_init(AppContext *app)
 static gboolean
 setup_database(AppContext *app, GError **err)
 {
-  char *insert_stmt_str;
+  char *insert_values_stmt_str;
+  char *insert_signals_stmt_str;
   if (!mysql_real_connect(&app->mysql,app->dbhost,app->dbuser, app->dbpasswd,
 			  app->database, app->dbport, NULL, 0)) {
     g_set_error(err, DATABASE_ERROR, DATABASE_ERROR_CONNECTION_FAILED,
 		"Connection failed: %s", mysql_error(&app->mysql));
     return FALSE;
   }
-  app->insert_stmt = mysql_stmt_init(&app->mysql);
-  insert_stmt_str =
-    g_strdup_printf("INSERT INTO %s (id, label, start, end, value) VALUES (?, ?, ?, ?, ?);", app->dbtable);
-  if (mysql_stmt_prepare(app->insert_stmt,
-			 insert_stmt_str,strlen(insert_stmt_str))) {
+
+  app->insert_values_stmt = mysql_stmt_init(&app->mysql);
+  insert_values_stmt_str =
+    g_strdup_printf("INSERT INTO %s_values (id, start, end, value) VALUES (?, ?, ?, ?);", app->dbtable);
+  if (mysql_stmt_prepare(app->insert_values_stmt,
+			 insert_values_stmt_str,strlen(insert_values_stmt_str))) {
     g_set_error(err, DATABASE_ERROR, DATABASE_ERROR_CONNECTION_FAILED,
 		"Preparing statement \"%s\" failed: %s",
-		insert_stmt_str, mysql_error(&app->mysql));
-    g_free(insert_stmt_str);
+		insert_values_stmt_str, mysql_error(&app->mysql));
+    g_free(insert_values_stmt_str);
+    return FALSE;
+  }
+  g_free(insert_values_stmt_str);
+
+  app->insert_signals_stmt = mysql_stmt_init(&app->mysql);
+  insert_signals_stmt_str =
+    g_strdup_printf("INSERT INTO %s_signals (id, label, src, dest, bit_offset, bit_width, type) VALUES (?, ?, ?, ?, ?, ?, ?);", app->dbtable);
+  if (mysql_stmt_prepare(app->insert_signals_stmt,
+			 insert_signals_stmt_str,strlen(insert_signals_stmt_str))) {
+    g_set_error(err, DATABASE_ERROR, DATABASE_ERROR_CONNECTION_FAILED,
+		"Preparing statement \"%s\" failed: %s",
+		insert_signals_stmt_str, mysql_error(&app->mysql));
+    g_free(insert_signals_stmt_str);
     return FALSE;
   }
 
-  g_free(insert_stmt_str);
+  g_free(insert_signals_stmt_str);
   return TRUE;
 }
 
@@ -167,32 +187,28 @@ extract_callback(gpointer user_data, const gchar *id,
   bind[0].buffer_length = strlen(id);
   bind[0].length = &bind[0].buffer_length;
 
-  bind[1].buffer_type = MYSQL_TYPE_STRING;
-  bind[1].buffer = (char*)label;
-  bind[1].buffer_length = strlen(label);
-  bind[1].length = &bind[1].buffer_length;
-
+  bind[1].buffer_type = MYSQL_TYPE_LONGLONG;
+  bind[1].buffer = &s;
+  bind[1].buffer_length = sizeof(s);
+  bind[1].is_unsigned = TRUE;
+  
   bind[2].buffer_type = MYSQL_TYPE_LONGLONG;
-  bind[2].buffer = &s;
-  bind[2].buffer_length = sizeof(s);
+  bind[2].buffer = &e;
+  bind[2].buffer_length = sizeof(e);
   bind[2].is_unsigned = TRUE;
   
-  bind[3].buffer_type = MYSQL_TYPE_LONGLONG;
-  bind[3].buffer = &e;
-  bind[3].buffer_length = sizeof(e);
-  bind[3].is_unsigned = TRUE;
-  
-  bind[4].buffer_type = MYSQL_TYPE_LONG;
-  bind[4].buffer = &value;
-  bind[4].buffer_length = sizeof(value);
+  bind[3].buffer_type = MYSQL_TYPE_LONG;
+  bind[3].buffer = &value;
+  bind[3].buffer_length = sizeof(value);
+  bind[2].is_unsigned = FALSE;
 
-  if (mysql_stmt_bind_param(app->insert_stmt, bind)) {
+  if (mysql_stmt_bind_param(app->insert_values_stmt, bind)) {
     g_critical("Failed to bind parameters for insert statement: %s",
 	       mysql_error(&app->mysql));
     return;
   }
 
-  if (mysql_stmt_execute(app->insert_stmt)) {
+  if (mysql_stmt_execute(app->insert_values_stmt)) {
     unsigned int e = mysql_errno(&app->mysql);
     if (e == ER_DUP_ENTRY || e == ER_DUP_ENTRY_WITH_KEY_NAME) {
       app->duplicate_count++;
@@ -441,6 +457,84 @@ read_packet_file(gpointer key,
   app->wtap_handle = NULL;
   return FALSE;
 }
+static gboolean
+insert_signal_data_cb(gpointer key, gpointer value, gpointer data)
+{
+  AppContext *app = data;
+  PacketTrace *trace = value;
+  SignalFilter *filter = trace->signals;
+  int src = trace->src;
+  int dest = trace->dst;
+  while(filter) {
+    MYSQL_BIND bind[7];
+    int bit_offset = filter->bit_offset;
+    int bit_width = filter->bit_width;
+    const gchar *type_str;
+
+    memset(bind, 0, sizeof(bind));
+    bind[0].buffer_type = MYSQL_TYPE_STRING;
+    bind[0].buffer = (char*)filter->id;
+    bind[0].buffer_length = strlen(filter->id);
+    bind[0].length = &bind[0].buffer_length;
+    
+    bind[1].buffer_type = MYSQL_TYPE_STRING;
+    bind[1].buffer = (char*)filter->label;
+    bind[1].buffer_length = strlen(filter->label);
+    bind[1].length = &bind[1].buffer_length;
+    
+    bind[2].buffer_type = MYSQL_TYPE_LONG;
+    bind[2].buffer = &src;
+    bind[2].buffer_length = sizeof(src);
+    bind[2].is_unsigned = TRUE;
+    
+    bind[3].buffer_type = MYSQL_TYPE_LONG;
+    bind[3].buffer = &dest;
+    bind[3].buffer_length = sizeof(dest);
+    bind[3].is_unsigned = TRUE;
+     
+    bind[4].buffer_type = MYSQL_TYPE_LONG;
+    bind[4].buffer = &bit_offset;
+    bind[4].buffer_length = sizeof(bit_offset);
+    bind[4].is_unsigned = TRUE;
+    
+    bind[5].buffer_type = MYSQL_TYPE_LONG;
+    bind[5].buffer = &bit_width;
+    bind[5].buffer_length = sizeof(bit_width);
+    bind[5].is_unsigned = TRUE;
+    
+    type_str = signal_extractor_get_type_string(filter->type);
+    bind[6].buffer_type = MYSQL_TYPE_STRING;
+    bind[6].buffer = (char*)type_str;
+    bind[6].buffer_length = strlen(type_str);
+    bind[6].length = &bind[6].buffer_length;
+    
+    if (mysql_stmt_bind_param(app->insert_signals_stmt, bind)) {
+      g_critical("Failed to bind parameters for insert statement: %s",
+		 mysql_error(&app->mysql));
+      return TRUE;
+    }
+    
+    if (mysql_stmt_execute(app->insert_signals_stmt)) {
+      unsigned int e = mysql_errno(&app->mysql);
+      if (e == ER_DUP_ENTRY || e == ER_DUP_ENTRY_WITH_KEY_NAME) {
+	/* Ignore if the signal is already present */
+      } else {
+	g_critical("Failed to execute insert statement: %d %s",
+		   e, mysql_error(&app->mysql));
+	return TRUE;
+      }
+    }
+    filter = filter->next;
+  }
+  return FALSE;
+}
+
+static gboolean
+insert_signal_data(AppContext *app)
+{
+  g_tree_foreach(app->signal_extractor->traces, insert_signal_data_cb, app);
+  return !(app->err);
+}
 
 static gchar *dbhost = NULL;
 static gchar *dbuser = NULL;
@@ -553,6 +647,11 @@ main(int argc, char *argv[])
     gchar *dump = signal_extractor_dump_filter(app.signal_extractor);
     g_printerr("%s", dump);
     g_free(dump);
+  }
+  if (!insert_signal_data(&app)) {
+    g_printerr("Failed to insert signal data: %s\n", app.err->message);
+    app_cleanup(&app);
+    return EXIT_FAILURE;
   }
   g_tree_foreach(app.packet_files, read_packet_file, &app);
   if (app.err) {

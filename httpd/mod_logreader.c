@@ -8,6 +8,7 @@
 #include <apr_strings.h>
 #include <apr_dbd.h>
 #include <mod_dbd.h>
+#include <http_log.h>
 
 static void register_hooks(apr_pool_t *pool);
 static int logreader_handler(request_rec *r);
@@ -117,9 +118,15 @@ static int json_error(request_rec *r, const char *format, ...)
 }
 #define COL_ID 0
 #define COL_LABEL 1
-#define COL_START 2
-#define COL_END 3
-#define COL_VALUE 4
+#define COL_SRC 2
+#define COL_DEST 3
+#define COL_BIT_OFFSET 4
+#define COL_BIT_WIDTH 5
+#define COL_TYPE 6
+
+#define COL_START 1
+#define COL_END 2
+#define COL_VALUE 3
 
 
 static int
@@ -138,15 +145,97 @@ check_symbol(const char *s)
 #define NS_TO_MS(x) ((x)/1000000)
 #define MS_TO_NS(x) ((x)*1000000)
 
-static int
-do_select(request_rec *r, const char *query, apr_int64_t start, apr_int64_t end)
+static void 
+append_int64(struct ap_varbuf *buf, apr_int64_t v)
 {
+  char str[25];
+  apr_snprintf(str, sizeof(str), "%" APR_INT64_T_FMT, v);
+  ap_varbuf_strcat(buf, str);
+}
+
+static apr_dbd_prepared_t *
+build_values_stmt(request_rec *r, ap_dbd_t*db, const char *table,
+		  apr_int64_t start, apr_int64_t end)
+{
+  char *query;
   apr_dbd_prepared_t *stmt = NULL;
+  struct ap_varbuf querybuf;
+  int res;
+
+  ap_varbuf_init(r->pool, &querybuf, 128);
+  ap_varbuf_strcat(&querybuf, "SELECT id, start, end, value FROM ");
+  ap_varbuf_strcat(&querybuf, table);
+  ap_varbuf_strcat(&querybuf, "_values WHERE");
+  ap_varbuf_strcat(&querybuf, " id = %s");
+  if (start >= 0) {
+    ap_varbuf_strcat(&querybuf, " AND end >= ");
+    append_int64(&querybuf, start);
+  }
+  if (end >= 0) {
+    ap_varbuf_strcat(&querybuf, " AND start < ");
+    append_int64(&querybuf, end);
+  }
+  query = ap_varbuf_pdup(r->pool, &querybuf, NULL, 0,
+			 " ORDER BY start;", 16, NULL);
+  ap_varbuf_free(&querybuf);
+  res = apr_dbd_prepare(db->driver, r->pool, db->handle, query, NULL, &stmt);
+  if (res) {
+    ap_log_rerror(APLOG_MARK,  APLOG_ERR , res, r, "Failed to prepare statement: %s", query);
+    return NULL;
+  }
+  return stmt;
+}
+
+static apr_dbd_prepared_t *
+build_signals_stmt(request_rec *r, ap_dbd_t*db, const char *table,
+		   apr_array_header_t *signals)
+{
+  char *query;
+  struct ap_varbuf querybuf;
+  apr_dbd_prepared_t *stmt = NULL;
+  int res;
+  ap_varbuf_init(r->pool, &querybuf, 128);
+  ap_varbuf_strcat(&querybuf,
+		   "SELECT id, label, src,dest,bit_offset, bit_width, type "
+		   "FROM ");
+  ap_varbuf_strcat(&querybuf, table);
+  ap_varbuf_strcat(&querybuf, "_signals");
+  if (!apr_is_empty_array(signals)) {
+    unsigned int i;
+    char *s = APR_ARRAY_IDX(signals, 0, char*);    
+    ap_varbuf_strcat(&querybuf, " WHERE id = \"");
+    ap_varbuf_strcat(&querybuf, s);
+    for (i = 1; i < signals->nelts; i++) {
+       ap_varbuf_strcat(&querybuf, "\" OR id = \"");
+       s = APR_ARRAY_IDX(signals, i, char*);    
+       ap_varbuf_strcat(&querybuf, s);
+    }
+    ap_varbuf_strcat(&querybuf, "\"");
+  }
+  ap_varbuf_strcat(&querybuf, ";");
+  query = ap_varbuf_pdup(r->pool, &querybuf, NULL, 0, "", 0, NULL);
+  ap_varbuf_free(&querybuf);
+  res = apr_dbd_prepare(db->driver, r->pool, db->handle, query, NULL, &stmt);
+  if (res) {
+    ap_log_rerror(APLOG_MARK,  APLOG_ERR , res, r, "Failed to prepare statement: %s", query);
+    return NULL;
+  }
+  return stmt;
+}
+
+
+static int
+do_select(request_rec *r, const char *table, apr_array_header_t *signals,
+	  apr_int64_t start, apr_int64_t end,
+	  apr_int64_t min_duration)
+{
+  apr_dbd_prepared_t *values_stmt = NULL;
+  apr_dbd_prepared_t *signals_stmt = NULL;
   apr_dbd_results_t *result = NULL;
+  apr_dbd_results_t *values_result = NULL;
   apr_dbd_row_t *row = NULL;
   ap_dbd_t*db;
-  apr_int64_t prev_end = -1;
-  char *current_id = "";
+
   logreader_config *lc = (logreader_config*)
     ap_get_module_config(r->per_dir_config, &logreader_module);
 
@@ -160,79 +249,88 @@ do_select(request_rec *r, const char *query, apr_int64_t start, apr_int64_t end)
       return json_error(r,"Failed to select database '%s'",lc->database);
     }
   }
-  if (apr_dbd_prepare(db->driver, r->pool, db->handle, query, NULL, &stmt)) {
-    return json_error(r,"Failed to prepare select '%s'",query);
-  }
-  if (apr_dbd_pselect(db->driver, r->pool, db->handle, &result, stmt,0,0, NULL)){
-     return json_error(r,"Failed to select '%s'",query);
+  values_stmt = build_values_stmt(r, db, table, start, end);
+  if (!values_stmt) return json_error(r,"Failed to prepare values select");
+  signals_stmt = build_signals_stmt(r, db, table,signals);
+  if (!signals_stmt) return json_error(r,"Failed to prepare signal select");
+  if (apr_dbd_pselect(db->driver, r->pool, db->handle, &result, signals_stmt,0,0, NULL)){
+     return json_error(r,"Failed to select signals");
   }
 
   ap_set_content_type(r, "application/json;charset=UTF-8");
   ap_rprintf(r,"{\"start\":%lld,\"end\":%lld",start,end);
-  ap_rprintf(r,",\"query\":\"%s\"",query);
 
   while(apr_dbd_get_row(db->driver, r->pool,  result, &row, -1) == 0) {
-    const char *start_str;
-    const char *end_str;
-    const char *value_str;
-    apr_int64_t start;
-    apr_int64_t end;
+    apr_int64_t prev_end = -1;
+    int short_duration = 0;  // The previous span was too short
     const char *id = apr_dbd_get_entry(db->driver, row, COL_ID);
-    if (strcmp(id, current_id) != 0) {
-      const char *label = apr_dbd_get_entry(db->driver, row, COL_LABEL);
-      if (*current_id != '\0') {
-	if (prev_end != -1) {
-	  ap_rprintf(r,"%lld,null",prev_end);
-	}
-	ap_rputs("]}",r);
+    const char *label = apr_dbd_get_entry(db->driver, row, COL_LABEL);
+    const char *src = apr_dbd_get_entry(db->driver, row, COL_SRC);
+    const char *dest = apr_dbd_get_entry(db->driver, row, COL_DEST);
+    const char *bit_offset = apr_dbd_get_entry(db->driver, row, COL_BIT_OFFSET);
+    const char *bit_width = apr_dbd_get_entry(db->driver, row, COL_BIT_WIDTH);
+    const char *type = apr_dbd_get_entry(db->driver, row, COL_TYPE);
+    ap_rprintf(r,",\"%s\":{\"label\":\"%s\"",id,label);
+    ap_rprintf(r,",\"src\":%s,\"dest\":%s",src,dest);
+    ap_rprintf(r,",\"bit_offset\":%s,\"bit_width\":%s",bit_offset,bit_width);
+    ap_rprintf(r,",\"type\":\"%s\", \"values\":[",type);
+#if 1
+    if (apr_dbd_pselect(db->driver, r->pool, db->handle, &values_result, values_stmt,0,1, &id)) {
+      return json_error(r,"Failed to select values");
+    }
+    while(apr_dbd_get_row(db->driver, r->pool,  values_result, &row, -1) == 0) {
+      const char *start_str;
+      const char *end_str;
+      const char *value_str;
+      apr_int64_t start;
+      apr_int64_t end;
+
+      start_str = apr_dbd_get_entry(db->driver, row, COL_START);
+      start = apr_strtoi64(start_str, NULL, 0);
+      end_str = apr_dbd_get_entry(db->driver, row, COL_END);
+      end = apr_strtoi64(end_str, NULL, 0);
+      value_str = apr_dbd_get_entry(db->driver, row, COL_VALUE);
+      if (start != prev_end && prev_end != -1) {
+	short_duration = 0;
+	ap_rprintf(r,"%lld,null,",prev_end);
       }
-      current_id = apr_pstrdup(r->pool, id);
-      ap_rprintf(r,",\"%s\":{\"label\":\"%s\",\"values\":[",id,label);
-      prev_end = -1;
+      if (end - start < min_duration) {
+	if (!short_duration) {
+	  ap_rprintf(r,"%lld,\"-\",",start);
+	  short_duration = 1;
+	}
+      } else {
+	short_duration = 0;
+	ap_rprintf(r,"%lld,%s,",start, value_str);
+      }
+      prev_end = end;
     }
-    start_str = apr_dbd_get_entry(db->driver, row, COL_START);
-    start = apr_strtoi64(start_str, NULL, 0);
-    end_str = apr_dbd_get_entry(db->driver, row, COL_END);
-    end = apr_strtoi64(end_str, NULL, 0);
-    value_str = apr_dbd_get_entry(db->driver, row, COL_VALUE);
-    if (start != prev_end && prev_end != -1) {
-      ap_rprintf(r,"%lld,null,",NS_TO_MS(prev_end));
-    }
-    ap_rprintf(r,"%lld,%s,",NS_TO_MS(start), value_str);
-    prev_end = end;
-  }
-  if (*current_id != '\0') {
     if (prev_end != -1) {
-      ap_rprintf(r,"%lld,null",NS_TO_MS(prev_end));
+      ap_rprintf(r,"%lld,null",prev_end);
     }
     ap_rputs("]}",r);
+#endif
   }
-
   ap_rputs("}\n",r);
  
   return OK;
 }
 
-static void 
-append_int64(struct ap_varbuf *buf, apr_int64_t v)
-{
-  char str[25];
-  apr_snprintf(str, sizeof(str), "%" APR_INT64_T_FMT, v);
-  ap_varbuf_strcat(buf, str);
-}
+
 static int
 logreader_handler(request_rec *r)
 {
   const char *start_str;
   const char *end_str;
   const char *signal_str;
+  const char *min_duration_str;
   apr_int64_t start = 0;
-  apr_int64_t end = APR_INT64_MAX;
+  apr_int64_t end = -1;
+  apr_int64_t min_duration = -1;
   apr_table_t *get_args;
-  struct ap_varbuf querybuf;
-  char *query;
   const char  *path;
   const char *table;
+  apr_array_header_t *signals;
   logreader_config *lc = (logreader_config*)
     ap_get_module_config(r->per_dir_config, &logreader_module);
   if (!r->handler || strcmp(r->handler, "logreader-handler")) return DECLINED;
@@ -253,10 +351,6 @@ logreader_handler(request_rec *r)
     table = path;
   }
   if (!table) return json_error(r,"No table");
-  ap_varbuf_init(r->pool, &querybuf, 128);
-  ap_varbuf_strcat(&querybuf, "SELECT id, label, start, end, value FROM ");
-  ap_varbuf_strcat(&querybuf, table);
-  ap_varbuf_strcat(&querybuf, " WHERE");
 
   ap_args_to_table(r, &get_args);
   start_str = apr_table_get(get_args, "start");
@@ -266,8 +360,7 @@ logreader_handler(request_rec *r)
     if (start_str == end || *end != '\0') {
       return json_error(r,"Invalid start time '%s'", start_str);
     }
-    ap_varbuf_strcat(&querybuf, " start >= ");
-    append_int64(&querybuf, MS_TO_NS(start));
+   
   }
   end_str = apr_table_get(get_args, "end");
   if (end_str) {
@@ -276,38 +369,35 @@ logreader_handler(request_rec *r)
     if (end_str == endp || *endp != '\0') {
       return json_error(r,"Invalid end time '%s'", end_str);
     }
-    if (start_str) ap_varbuf_strcat(&querybuf, " AND");
-    ap_varbuf_strcat(&querybuf, " end < ");
-    append_int64(&querybuf, MS_TO_NS(end));
+  
   }
   if (start >= end) {
     return json_error(r,"Start time must be less than end time");
   }
+  min_duration_str = apr_table_get(get_args, "min_duration");
+  if (min_duration_str) {
+    char *endp;
+    min_duration = apr_strtoi64(min_duration_str, &endp,10);
+    if (end_str == endp || *endp != '\0' || min_duration < 0) {
+      return json_error(r,"Invalid minimum duration time '%s'", min_duration_str);
+    }
+  }
+  signals = apr_array_make(r->pool, 0, sizeof(char*));
   signal_str = apr_table_get(get_args, "signals");
   if (!signal_str) {
     return json_error(r,"No signals");
   } if (signal_str[0] == '*' && signal_str[1] == '\0') {
-    /* Select all signals */
-    if (!start_str && !end_str) ap_varbuf_strcat(&querybuf, " true");
   } else {
     char *last;
     char *signal = apr_strtok(apr_pstrdup(r->pool,signal_str), ",", &last);
     if (!signal) return json_error(r,"No signals");
-    if (start_str || end_str) ap_varbuf_strcat(&querybuf, " AND");
-    ap_varbuf_strcat(&querybuf, " (");
     while (signal) {
       if (!check_symbol(signal))  return json_error(r,"Illegal signal id");
-      ap_varbuf_strcat(&querybuf, "id = '");
-      ap_varbuf_strcat(&querybuf, signal);
-      ap_varbuf_strcat(&querybuf, "'");
+      APR_ARRAY_PUSH(signals, char*) = signal;
+
       signal = apr_strtok(NULL, ",", &last);
-      if (signal) ap_varbuf_strcat(&querybuf, " OR ");
     }
-    ap_varbuf_strcat(&querybuf, ")");
   }
-  query = ap_varbuf_pdup(r->pool, &querybuf, NULL, 0,
-			 " ORDER BY id, start;", 20, NULL);
-  ap_varbuf_free(&querybuf);
   
-  return do_select(r, query, start, end);
+  return do_select(r, table, signals, start, end, min_duration);
 }
