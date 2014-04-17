@@ -116,7 +116,7 @@ setup_database(AppContext *app, GError **err)
   }
   app->insert_stmt = mysql_stmt_init(&app->mysql);
   insert_stmt_str =
-    g_strdup_printf("INSERT INTO %s VALUES (?, ?, ?, ?, ?);", app->dbtable);
+    g_strdup_printf("INSERT INTO %s (id, label, start, end, value) VALUES (?, ?, ?, ?, ?);", app->dbtable);
   if (mysql_stmt_prepare(app->insert_stmt,
 			 insert_stmt_str,strlen(insert_stmt_str))) {
     g_set_error(err, DATABASE_ERROR, DATABASE_ERROR_CONNECTION_FAILED,
@@ -125,6 +125,7 @@ setup_database(AppContext *app, GError **err)
     g_free(insert_stmt_str);
     return FALSE;
   }
+
   g_free(insert_stmt_str);
   return TRUE;
 }
@@ -190,6 +191,7 @@ extract_callback(gpointer user_data, const gchar *id,
 	       mysql_error(&app->mysql));
     return;
   }
+
   if (mysql_stmt_execute(app->insert_stmt)) {
     unsigned int e = mysql_errno(&app->mysql);
     if (e == ER_DUP_ENTRY || e == ER_DUP_ENTRY_WITH_KEY_NAME) {
@@ -231,6 +233,13 @@ read_packets(AppContext *app, GError **err)
   gint64 ts_ns;
   gint64 data_offset;
   app->duplicate_count = 0;
+
+  if (mysql_query(&app->mysql, "START TRANSACTION;")) {
+    unsigned int e = mysql_errno(&app->mysql);
+    g_critical("Failed to start transaction: %d %s",
+	       e, mysql_error(&app->mysql));
+  }
+
   while(TRUE) {
     guint8 *data;
     guint len;
@@ -289,6 +298,11 @@ read_packets(AppContext *app, GError **err)
 			     ts_ns,
 			     data, len,
 			     extract_callback, app);
+  }
+  if (mysql_query(&app->mysql, "COMMIT;")) {
+    unsigned int e = mysql_errno(&app->mysql);
+    g_critical("Failed to commit: %d %s",
+	       e, mysql_error(&app->mysql));
   }
   ts_ns =  hdr->ts.secs * 1000000000LL +  hdr->ts.nsecs;
   if (ts_ns > app->prev_file_end_ns) {
