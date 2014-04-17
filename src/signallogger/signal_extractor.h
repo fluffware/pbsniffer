@@ -70,3 +70,6 @@ signal_extractor_finish(SignalExtractor *se,
 
 gchar *
 signal_extractor_dump_filter(SignalExtractor *se);
+
+const gchar *
+signal_extractor_get_type_string(gint type);

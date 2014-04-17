@@ -452,6 +452,10 @@ signal_extractor_extract(SignalExtractor *se, guint src, guint dst,
       value = (value << 8) | (block[byte_last] & mask_last);
     }
     value >>= shift;
+    if (s->type == SIGNAL_TYPE_SIGNED_INT
+	&& (value & (1<<(s->bit_width-1)))) { /* High bit set */
+      value |= (~0U<<(s->bit_width));
+    }
     if (s->last_timestamp_ns >= 0) {
       if (value != s->last_value) {
 	callback(user_data, s->id, s->label, s->last_timestamp_ns, timestamp, s->last_value);
@@ -542,4 +546,20 @@ signal_extractor_dump_filter(SignalExtractor *se)
   GString *out = g_string_new("Signal filter\n");
   g_tree_foreach(se->traces, dump_trace, out);
   return g_string_free(out, FALSE);
+}
+
+const gchar *
+signal_extractor_get_type_string(gint type)
+{
+  switch(type) {
+  case SIGNAL_TYPE_UNKNOWN:
+    return "unknown";
+  case SIGNAL_TYPE_SIGNED_INT:
+    return "signed int";
+  case SIGNAL_TYPE_UNSIGNED_INT:
+    return "unsigned int";
+  default:
+    
+    return "illegal";
+  }
 }
