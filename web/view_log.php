@@ -180,16 +180,25 @@ function start()
 		  array(PDO::ATTR_PERSISTENT => true,
 			PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION));
    $base_name = $_GET['log'];
-   $res = $dbh->query("SELECT v.id,s.label,min(start), max(end)  FROM ".$base_name."_values as v, ".$base_name."_signals as s WHERE v.id = s.id GROUP BY id;");
+   $res = $dbh->query("SELECT v.id,s.label,min(start), max(end), src, dest, bit_offset, bit_width FROM ".$base_name."_values as v, ".$base_name."_signals as s WHERE v.id = s.id GROUP BY id;");
    $res->bindColumn(1, $id);
    $res->bindColumn(2, $label);
    
    $res->bindColumn(3, $min_start);
    $res->bindColumn(4, $max_end);
+   $res->bindColumn(5, $src);
+   $res->bindColumn(6, $dest);
+   $res->bindColumn(7, $offset);
+   $res->bindColumn(8, $width);
    while($res->fetch(PDO::FETCH_BOUND)) {
      $min_time = (new DateTime("@".round($min_start/1e9)))->format("Y-m-d H:i:s");
      $max_time = (new DateTime("@".round($max_end/1e9)))->format("Y-m-d H:i:s");
-     $line = "<tr id=\"signal_$id\"><td  class=\"action\" onclick=\"move_signal_row($(this));\">$label</td><td class=\"action\" onclick=\"step.goTo($min_start);\">$min_time</td><td class=\"action\" onclick=\"step.goTo($max_end);\">$max_time</td></tr>\n";
+     $line = "<tr id=\"signal_$id\">
+<td  class=\"action\" onclick=\"move_signal_row($(this));\">$label</td>
+<td class=\"action\" onclick=\"step.goTo($min_start);\">$min_time</td>
+<td class=\"action\" onclick=\"step.goTo($max_end);\">$max_time</td>
+<td>$src</td><td>$dest</td><td>$offset</td><td>$width</td>
+</tr>\n";
      if (in_array($id, $signals)) {
        $shown .= $line;
      } else {
@@ -223,6 +232,7 @@ $dbh = null;
     <table id="signals_shown">
       <tr>
 	<th>Namn</th><th>Första</th><th>Sista</th>
+	<th>Från</th><th>Till</th><th>Position</th><th>Bitar</th>
       </tr>
       <?php echo $shown ?>
     </table>
@@ -230,6 +240,7 @@ $dbh = null;
     <table id="signals_available">
       <tr>
 	<th>Namn</th><th>Första</th><th>Sista</th>
+	<th>Från</th><th>Till</th><th>Position</th><th>Bitar</th>
       </tr>
       <?php echo $available ?>
     </table>
