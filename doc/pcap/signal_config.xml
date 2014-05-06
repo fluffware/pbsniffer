@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<signal-list>
+  <trace src="31" dst="2">
+    <signal id="pos1">
+      <label>Pos 1</label>
+      <mask offset="0" width="16"/>
+      <unsigned/>
+    </signal>
+  </trace>
+  <trace src="32" dst="2">
+    <signal id="pos2">
+      <label>Pos 2</label>
+      <mask offset="0" width="16"/>
+      <unsigned/>
+    </signal>
+  </trace>
+  <trace src="33" dst="2">
+    <signal id="pos3">
+      <label>Pos 3</label>
+      <mask offset="0" width="16"/>
+      <unsigned/>
+    </signal>
+  </trace>
+  <trace src="34" dst="2">
+    <signal id="pos4">
+      <label>Pos 4</label>
+      <mask offset="0" width="16"/>
+      <unsigned/>
+    </signal>
+  </trace>
+  <trace src="35" dst="2">
+    <signal id="pos5">
+      <label>Pos 5</label>
+      <mask offset="0" width="16"/>
+      <unsigned/>
+    </signal>
+  </trace>
+  <trace src="36" dst="2">
+    <signal id="pos6">
+      <label>Pos 6</label>
+      <mask offset="0" width="16"/>
+      <unsigned/>
+    </signal>
+  </trace>
+  <trace src="37" dst="2">
+    <signal id="pos7">
+      <label>Pos 7</label>
+      <mask offset="0" width="16"/>
+      <unsigned/>
+    </signal>
+  </trace>
+  <trace src="2" dst="21">
+    <signal id="flag_req1">
+      <label>Flag req 1</label>
+      <mask offset="4" width="1"/>
+      <unsigned/>
+    </signal>
+  </trace>
+  <trace src="21" dst="2">
+    <signal id="flag_resp1">
+      <label>Flag resp 1</label>
+      <mask offset="5" width="1"/>
+      <unsigned/>
+    </signal>
+  </trace>
+  <trace src="27" dst="2">
+    <signal id="ap9_pt1">
+      <label>AP9-PT1 spänntryck</label>
+      <mask offset="16" width="16"/>
+      <signed/>
+    </signal>
+    <signal id="ap9_pmv1">
+      <label>AP9-PMV1 börtryck</label>
+      <mask offset="32" width="16"/>
+      <unsigned/>
+    </signal>
+  </trace>
+  
+</signal-list>
