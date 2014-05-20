@@ -62,3 +62,7 @@ table {
 .graph-text {
 }
 
+.graph-time .graph-block {
+    fill:#e0e0ff;
+}
+

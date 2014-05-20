@@ -673,6 +673,7 @@ function TimeGraphBlock(context)
 						 "svg:g");
 	    trans.setAttribute("transform", "translate(0, "
 			       + (b * sub_height) + ")");
+	    trans.setAttribute("class", "graph-time");
 	    sub_blocks[b].build_block(trans, time_start, time_end, values);
 	    parent.appendChild(trans);
 	}
