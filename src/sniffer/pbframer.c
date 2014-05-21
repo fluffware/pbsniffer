@@ -44,6 +44,8 @@ struct _PBFramer
   gsize packet_len;
   /* Time stamp corresponing to the beginning of input_buffer */
   gint64 input_buffer_ts;
+  /* End of last read */
+  gint64 last_read_ts;
   /* Number of microsecconds corresponding to one byte */
   glong speed;
   gulong lost_packets;
@@ -192,6 +194,7 @@ pb_framer_init (PBFramer *framer)
   framer->min_queue = 10;
   framer->creator_context = NULL;
   framer->idle_signal = NULL;
+  framer->last_read_ts = g_get_real_time();
 }
 
 #define SD1 0x10
@@ -417,7 +420,7 @@ framer_thread(gpointer data)
     r = g_input_stream_read(framer->input, read_start, read_len,
 			    framer->cancel, &err);
     framer->input_buffer_ts = g_get_real_time();
-    
+
     if (r == 0) {
       g_warning("Reached EOF");
       break;
@@ -432,6 +435,15 @@ framer_thread(gpointer data)
       guint8 *read_end;
       GError *err = NULL;
       gsize len = r;
+      gint64 read_period = BYTES_PERIOD(r, framer->speed);
+      if (framer->input_buffer_ts < framer->last_read_ts + read_period) {
+	if (framer->last_read_ts + read_period - framer->input_buffer_ts
+	    > 1000) {
+	  g_warning("Adjusted time forward more than 1ms");
+	}
+	framer->input_buffer_ts = framer->last_read_ts + read_period;
+      }
+      framer->last_read_ts = framer->input_buffer_ts;
       /* Adjust the time stamp to the beginning of the input buffer */
       framer->input_buffer_ts -= BYTES_PERIOD(framer->packet_len + r,
 					      framer->speed);
