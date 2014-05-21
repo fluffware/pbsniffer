@@ -50,11 +50,11 @@ function start()
     ?>
 }
     </script>
-    <title>View <?php echo $_GET['log']; ?></title>
+    <title>Signaler (<?php echo $_GET['log']; ?>)</title>
     
   </head>
   <body onload="start();">
-    <h1>View <?php echo $_GET['log']; ?></h1>
+   <h1>Signaler (<?php echo $_GET['log']; ?>)</h1>
     <div id="graph"/>
    <table >
       <tr id="step_1ms" class="step">
