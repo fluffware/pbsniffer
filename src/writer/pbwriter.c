@@ -21,7 +21,7 @@ set_termios(int fd, unsigned int rate, GError **err)
     return FALSE;
   }
   settings.c_iflag &= ~(IGNBRK | BRKINT | IGNPAR | INPCK | ISTRIP
-			| INLCR | IGNCR | ICRNL | IXON | PARMRK);
+			| INLCR | IGNCR | ICRNL | IXON |IXOFF | PARMRK);
   settings.c_iflag |= IGNBRK | IGNPAR;
   settings.c_oflag &= ~OPOST;
   settings.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
