@@ -156,7 +156,7 @@ open_packet_file(AppContext *app, GFile *file, GError **err)
   int werr;
   gchar *err_info = NULL;
   gchar *path = g_file_get_path(file);
-  app->wtap_handle = wtap_open_offline(path, &werr, &err_info, FALSE);
+  app->wtap_handle = wtap_open_offline(path, WTAP_TYPE_AUTO, &werr, &err_info, FALSE);
   g_free(path);
   if (!app->wtap_handle) {
     if (err_info) {

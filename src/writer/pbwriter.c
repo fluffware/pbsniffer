@@ -113,7 +113,7 @@ main(int argc, char *argv[])
   }
   g_option_context_free(opt_ctxt);
   
-  w = wtap_open_offline(argv[1], &werr, &err_info, FALSE);
+  w = wtap_open_offline(argv[1], WTAP_TYPE_AUTO, &werr, &err_info, FALSE);
   if (!w) {
     g_printerr("Failed to open packet file: %d\n", werr);
     return EXIT_FAILURE;
